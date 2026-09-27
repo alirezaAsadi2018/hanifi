@@ -1,4 +1,8 @@
 import type { Screen } from "../types";
+import pumpImg from "../assets/images/pump.jpg";
+import motorImg from "../assets/images/motor.jpg";
+import boosterImg from "../assets/images/booster.jpg";
+import gearboxImg from "../assets/images/gearbox.jpg";
 
 // ─────────────────────────────────────────────
 // Catalog
@@ -30,10 +34,10 @@ export type Product = {
 };
 
 const img = {
-  pump: "https://images.unsplash.com/photo-1700318092011-6e4666e94ab5?auto=format&fit=crop&w=900&q=85",
-  motor: "https://images.unsplash.com/photo-1674471361339-f720c171ec77?auto=format&fit=crop&w=900&q=85",
-  booster: "https://images.unsplash.com/photo-1738918929491-3c102ce11c8a?auto=format&fit=crop&w=900&q=85",
-  gearbox: "https://images.unsplash.com/photo-1705579602199-4157a1041a93?auto=format&fit=crop&w=900&q=85",
+  pump: pumpImg,
+  motor: motorImg,
+  booster: boosterImg,
+  gearbox: gearboxImg,
 };
 
 export const categories = [

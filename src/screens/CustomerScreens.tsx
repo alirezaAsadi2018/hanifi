@@ -1,4 +1,5 @@
 import { useState } from "react";
+import heroImg from "../assets/images/hero.jpg";
 import Icon, { type IconName } from "../components/Icon";
 import { MapBg } from "../components/MapPicker";
 import ProductCard from "../components/ProductCard";
@@ -30,7 +31,7 @@ export function CustomerHome() {
             </div>
             <div className="mt-8 flex flex-wrap gap-5 text-xs text-muted">{["ضمانت اصالت", "ارسال سریع", "پشتیبانی تخصصی"].map((item) => <div key={item} className="flex items-center gap-2"><span className="check-badge"><Icon name="check" size="sm" /></span>{item}</div>)}</div>
           </div>
-          <div className="hero-visual"><img className="h-full w-full object-cover" src="https://images.unsplash.com/photo-1655874837055-7adc909ae602?auto=format&fit=crop&w=1200&q=88" alt="تجهیزات صنعتی در کارخانه" /><div className="hero-overlay" /><div className="floating-stat stat-top"><span className="status-online" /><div><div className="font-extrabold">{formatNumber(28)} متخصص آنلاین</div><div className="mt-1 text-xs text-muted">آماده خدمت در محدوده شما</div></div></div></div>
+          <div className="hero-visual"><img className="h-full w-full object-cover" src={heroImg} alt="تجهیزات صنعتی در کارخانه" /><div className="hero-overlay" /><div className="floating-stat stat-top"><span className="status-online" /><div><div className="font-extrabold">{formatNumber(28)} متخصص آنلاین</div><div className="mt-1 text-xs text-muted">آماده خدمت در محدوده شما</div></div></div></div>
         </div>
       </section>
       <section className="page-wrap py-5">
