@@ -1,8 +1,11 @@
 import { useRef, useState } from "react";
-import { Button, formatNumber, formatPrice } from "../components/ui";
+import { Button, ConfirmDialog, formatDecimal, formatNumber, formatPrice, Modal, formatId } from "../components/ui";
 import Icon, { type IconName } from "../components/Icon";
-import { categories, extendedTechnicians, myServiceRequests } from "../data/mock";
-import type { Navigate } from "../types";
+import { MapBg, MapPicker } from "../components/MapPicker";
+import { categories, extendedTechnicians, myServiceRequests, requestStatusLabel } from "../data/mock";
+import { formatJalaliLong, isSameDay, jalaliMonth, weekDays } from "../lib/jalali";
+import { useApp } from "../state";
+import { LoginFlow } from "./AccountScreens";
 
 // ─────────────────────────────────────────────
 // Shared local data
@@ -14,10 +17,7 @@ const savedAddresses = [
 ];
 
 const timeSlots = ["۸ تا ۱۱", "۱۱ تا ۱۴", "۱۴ تا ۱۷", "۱۷ تا ۲۰"];
-const jalaliDays = ["ش", "ی", "د", "س", "چ", "پ", "ج"];
-const jalaliDayOffset = 4; // Azar 1403 approx starts Wednesday
-const jalaliDayCount = 30;
-const todayDay = 7;
+const today = new Date();
 
 // ─────────────────────────────────────────────
 // Wizard state
@@ -33,6 +33,7 @@ type WizardData = {
   problem: string;
   mediaFiles: MediaFile[];
   savedAddressId: number | null;
+  mapLabel: string;
   addressDetails: string;
   timeChoice: "asap" | "scheduled";
   selectedDate: string;
@@ -49,31 +50,6 @@ function StepCard({ title, desc, children }: { title: string; desc: string; chil
     <div className="rounded-3xl border border-line bg-white p-5 sm:p-7">
       <div className="text-xl font-black">{title}</div>
       <div className="mt-1.5 text-sm text-muted">{desc}</div>
-      {children}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// Mock map background
-// ─────────────────────────────────────────────
-
-function MapBg({ children, className = "" }: { children?: React.ReactNode; className?: string }) {
-  return (
-    <div className={`relative overflow-hidden rounded-2xl bg-sky-50 ${className}`}>
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(8,127,104,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(8,127,104,.06) 1px,transparent 1px)",
-          backgroundSize: "32px 32px",
-        }}
-      />
-      <div className="absolute inset-0 opacity-20">
-        <div className="absolute left-0 right-0 top-1/3 h-8 bg-white" />
-        <div className="absolute bottom-0 top-0 right-1/3 w-5 bg-white" />
-        <div className="absolute left-1/4 right-0 top-2/3 h-4 bg-white" />
-      </div>
       {children}
     </div>
   );
@@ -125,7 +101,7 @@ function TechnicianPicker({
                 left: z.x, top: z.y,
                 width: z.size, height: z.size,
                 background: z.color,
-                border: "1px solid rgba(8,127,104,.2)",
+                border: "1px solid rgba(0,0,0,.12)",
               }}
             />
           ))}
@@ -188,10 +164,10 @@ function TechnicianPicker({
                 </span>
                 <span className="mt-1 block text-xs text-muted">{tech.skill}</span>
                 <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted">
-                  <span>⭐ {tech.rating.toLocaleString("fa-IR")}</span>
+                  <span>⭐ {formatDecimal(tech.rating)}</span>
                   <span>{formatNumber(tech.jobs)} پروژه</span>
                   <span>{formatNumber(tech.acceptance)}٪ پذیرش</span>
-                  <span>{tech.distance.toLocaleString("fa-IR")} کیلومتر</span>
+                  <span>حدود {formatDecimal(tech.distance)} کیلومتر</span>
                   <span className="font-bold text-ink">از {formatPrice(tech.tariffs[0].price)}</span>
                 </span>
               </span>
@@ -227,14 +203,14 @@ function ReviewStep({ data, onSubmit }: { data: WizardData; onSubmit: () => void
     { label: "شرح مشکل", value: data.problem || "—" },
     {
       label: "آدرس",
-      value: addr ? `${addr.label}: ${addr.detail}` : data.addressDetails || "موقعیت فعلی",
+      value: [addr ? `${addr.label}: ${addr.detail}` : data.mapLabel || "موقعیت روی نقشه", data.addressDetails].filter(Boolean).join(" — "),
     },
     {
       label: "زمان",
       value:
         data.timeChoice === "asap"
           ? "در سریع‌ترین زمان"
-          : `${data.selectedDate} آذر ۱۴۰۳ — ${data.timeSlot}`,
+          : `${data.selectedDate} — ساعت ${data.timeSlot}`,
     },
     { label: "نصاب", value: tech ? tech.name : "ارسال به همه نصاب‌های نزدیک" },
   ];
@@ -272,30 +248,35 @@ function ReviewStep({ data, onSubmit }: { data: WizardData; onSubmit: () => void
 // SERVICE WIZARD SCREEN (main export)
 // ─────────────────────────────────────────────
 
-export function ServiceWizardScreen({
-  navigate,
-  preselectedService = "",
-}: {
-  navigate: Navigate;
-  preselectedService?: string;
-}) {
+export function ServiceWizardScreen() {
+  const { navigate, back: leave, servicePrefill, user, login, toast } = useApp();
   const TOTAL = 7;
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [step, setStep] = useState(1);
+  // A chip / product page / technician profile may already have answered the first steps.
+  const [step, setStep] = useState(servicePrefill.service ? (servicePrefill.device ? 3 : 2) : 1);
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [loginOpen, setLoginOpen] = useState(false);
   const [data, setData] = useState<WizardData>({
-    serviceType: preselectedService,
-    deviceType: "",
+    serviceType: servicePrefill.service ?? "",
+    deviceType: servicePrefill.device ?? "",
     brand: "",
     model: "",
     problem: "",
     mediaFiles: [],
-    savedAddressId: null,
+    savedAddressId: 1,
+    mapLabel: "",
     addressDetails: "",
     timeChoice: "asap",
     selectedDate: "",
     timeSlot: timeSlots[0],
-    technicianId: null,
+    technicianId: servicePrefill.technicianId ?? null,
   });
+  const month = jalaliMonth(today, monthOffset);
+  const submit = () => {
+    if (!user) { setLoginOpen(true); return; }
+    toast("درخواست ثبت شد و برای نصاب‌ها ارسال شد");
+    navigate("request-status", 1);
+  };
 
   const update = <K extends keyof WizardData>(key: K, value: WizardData[K]) =>
     setData((prev) => ({ ...prev, [key]: value }));
@@ -303,15 +284,23 @@ export function ServiceWizardScreen({
   const next = () => setStep((s) => Math.min(s + 1, TOTAL));
   const back = () => {
     if (step > 1) setStep((s) => s - 1);
-    else navigate("home");
+    else leave();
   };
 
   const handleMediaAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
+    // Up to 5 photos, or a single video on its own.
+    if (files.some((f) => f.type.startsWith("video"))) {
+      const video = files.find((f) => f.type.startsWith("video"))!;
+      update("mediaFiles", [{ url: URL.createObjectURL(video), name: video.name, isVideo: true }]);
+      e.target.value = "";
+      return;
+    }
+    const kept = data.mediaFiles.filter((f) => !f.isVideo);
     const newFiles = files
-      .slice(0, 5 - data.mediaFiles.length)
+      .slice(0, 5 - kept.length)
       .map((f) => ({ url: URL.createObjectURL(f), name: f.name, isVideo: f.type.startsWith("video") }));
-    update("mediaFiles", [...data.mediaFiles, ...newFiles]);
+    update("mediaFiles", [...kept, ...newFiles]);
     e.target.value = "";
   };
 
@@ -323,7 +312,7 @@ export function ServiceWizardScreen({
       <div className="sticky top-0 z-20 border-b border-line bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center gap-3">
           <Button className="icon-action shrink-0" onClick={back} label="بازگشت">
-            <Icon name="arrow" />
+            <Icon name="back" />
           </Button>
           <div className="flex-1">
             <div className="text-sm font-black">ثبت درخواست خدمت</div>
@@ -332,7 +321,7 @@ export function ServiceWizardScreen({
             </div>
           </div>
           <div className="shrink-0 text-xs font-bold text-brand">
-            {Math.round((step / TOTAL) * 100)}٪
+            {formatNumber(Math.round((step / TOTAL) * 100))}٪
           </div>
         </div>
         <div className="mx-auto mt-3 flex max-w-2xl gap-1">
@@ -461,7 +450,7 @@ export function ServiceWizardScreen({
                     </Button>
                   </div>
                 ))}
-                {data.mediaFiles.length < 5 && (
+                {data.mediaFiles.length < 5 && !data.mediaFiles.some((f) => f.isVideo) && (
                   <Button
                     className="flex h-20 w-20 flex-col items-center justify-center gap-1 rounded-2xl border-2 border-dashed border-line text-xs font-bold text-muted hover:border-brand hover:text-brand"
                     onClick={() => fileInputRef.current?.click()}
@@ -489,21 +478,7 @@ export function ServiceWizardScreen({
         {/* Step 4: Location */}
         {step === 4 && (
           <StepCard title="موقعیت مکانی" desc="محل نصب یا تعمیر دستگاه را مشخص کنید">
-            <MapBg className="mt-5 h-52">
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full">
-                <div className="flex size-10 items-center justify-center rounded-full border-2 border-white bg-brand text-white shadow-lg">
-                  <Icon name="pin" size="sm" />
-                </div>
-                <div className="mx-auto mt-0.5 h-2 w-0.5 bg-brand" />
-              </div>
-              <Button
-                className="absolute right-3 top-3 flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-bold shadow hover:text-brand"
-                onClick={() => {}}
-              >
-                <Icon name="pin" size="sm" />
-                موقعیت فعلی من
-              </Button>
-            </MapBg>
+            <MapPicker className="mt-5 h-52" onChange={(label) => { update("mapLabel", label); update("savedAddressId", null); }} />
 
             <div className="mt-4 space-y-2">
               {savedAddresses.map((addr) => {
@@ -541,7 +516,7 @@ export function ServiceWizardScreen({
               />
             </label>
 
-            <Button className="primary-button mt-5 w-full justify-center" onClick={next}>
+            <Button className="primary-button mt-5 w-full justify-center" disabled={!data.savedAddressId && !data.mapLabel} onClick={next}>
               مرحله بعد
             </Button>
           </StepCard>
@@ -575,46 +550,45 @@ export function ServiceWizardScreen({
 
             {data.timeChoice === "scheduled" && (
               <>
-                {/* Jalali calendar */}
+                {/* Jalali calendar (real dates via Intl) */}
                 <div className="mt-5 rounded-2xl border border-line bg-white p-4">
                   <div className="mb-4 flex items-center justify-between">
-                    <Button className="icon-action size-9">
+                    <Button className="icon-action size-9" style={{ transform: "scaleX(-1)" }} disabled={monthOffset === 0} onClick={() => setMonthOffset(monthOffset - 1)} label="ماه قبل">
                       <Icon name="arrow" size="sm" />
                     </Button>
-                    <div className="font-black">آذر ۱۴۰۳</div>
-                    <Button
-                      className="icon-action size-9"
-                      style={{ transform: "scaleX(-1)" }}
-                    >
+                    <div className="font-black">{month.title}</div>
+                    <Button className="icon-action size-9" disabled={monthOffset >= 2} onClick={() => setMonthOffset(monthOffset + 1)} label="ماه بعد">
                       <Icon name="arrow" size="sm" />
                     </Button>
                   </div>
                   <div className="mb-2 grid grid-cols-7 text-center text-xs font-bold text-muted">
-                    {jalaliDays.map((d) => (
+                    {weekDays.map((d) => (
                       <div key={d}>{d}</div>
                     ))}
                   </div>
                   <div className="grid grid-cols-7 gap-1 text-center">
-                    {Array.from({ length: jalaliDayOffset }).map((_, i) => (
+                    {Array.from({ length: month.leading }).map((_, i) => (
                       <div key={`e${i}`} />
                     ))}
-                    {Array.from({ length: jalaliDayCount }, (_, i) => i + 1).map((d) => {
-                      const label = d.toLocaleString("fa-IR");
-                      const isPast = d < todayDay;
-                      const isToday = d === todayDay;
+                    {month.days.map((day) => {
+                      const label = formatJalaliLong(day);
+                      const isPast = day < today && !isSameDay(day, today);
+                      const isToday = isSameDay(day, today);
+                      const isFriday = day.getDay() === 5;
                       const isSelected = data.selectedDate === label;
                       return (
                         <Button
-                          key={d}
+                          key={day.toISOString()}
                           disabled={isPast}
+                          label={label}
                           className={`rounded-xl py-2 text-xs font-bold transition-all
-                            ${isPast ? "text-faint" : ""}
+                            ${isPast ? "text-faint" : isFriday ? "text-red-500" : ""}
                             ${isToday && !isSelected ? "font-black text-brand underline underline-offset-2" : ""}
                             ${isSelected ? "bg-brand text-white" : !isPast ? "hover:bg-brand-soft hover:text-brand" : ""}
                           `}
                           onClick={() => update("selectedDate", label)}
                         >
-                          {label}
+                          {day.toLocaleDateString("fa-IR-u-ca-persian", { day: "numeric" })}
                         </Button>
                       );
                     })}
@@ -654,8 +628,11 @@ export function ServiceWizardScreen({
         {step === 6 && <TechnicianPicker data={data} update={update} onNext={next} />}
 
         {/* Step 7: Review & submit */}
-        {step === 7 && <ReviewStep data={data} onSubmit={() => navigate("request-status")} />}
+        {step === 7 && <ReviewStep data={data} onSubmit={submit} />}
       </div>
+      <Modal open={loginOpen} onClose={() => setLoginOpen(false)} title="برای ثبت درخواست وارد شوید" subtitle="اطلاعات درخواست شما حفظ می‌شود.">
+        <LoginFlow compact onDone={(u) => { login(u, true); setLoginOpen(false); navigate("request-status", 1); }} />
+      </Modal>
     </div>
   );
 }
@@ -664,196 +641,198 @@ export function ServiceWizardScreen({
 // REQUEST STATUS SCREEN
 // ─────────────────────────────────────────────
 
-export function RequestStatusScreen({ navigate }: { navigate: Navigate }) {
-  const [showCancel, setShowCancel] = useState(false);
-  const [cancelReason, setCancelReason] = useState("");
-  const tech = extendedTechnicians[0];
+const lifecycle = [
+  { key: "waiting", label: "در انتظار پذیرش" },
+  { key: "accepted", label: "پذیرفته شد" },
+  { key: "quote", label: "پیشنهاد قیمت نصاب" },
+  { key: "enroute", label: "نصاب در راه است" },
+  { key: "working", label: "در حال انجام" },
+  { key: "done", label: "پایان کار" },
+  { key: "payment", label: "پرداخت" },
+  { key: "rating", label: "امتیازدهی" },
+] as const;
 
-  const cancelReasons = [
-    "تغییر برنامه",
-    "مشکل خودش حل شد",
-    "قیمت مناسب نبود",
-    "پیدا کردن نصاب دیگر",
-    "سایر دلایل",
-  ];
+const LABOR = 650000;
+const PARTS = 320000;
 
-  type Stage = { key: string; label: string; done: boolean; active: boolean; eta?: string };
-  const stages: Stage[] = [
-    { key: "submitted", label: "ثبت درخواست", done: true, active: false },
-    { key: "accepted", label: "پذیرش توسط نصاب", done: true, active: false },
-    {
-      key: "quote",
-      label: "پیشنهاد قیمت نصاب",
-      done: false,
-      active: true,
-      eta: "در انتظار پاسخ شما",
-    },
-    { key: "enroute", label: "نصاب در راه است", done: false, active: false, eta: "تخمین ۳۵ دقیقه" },
-    { key: "done", label: "پایان کار", done: false, active: false },
-    { key: "payment", label: "پرداخت", done: false, active: false },
-    { key: "rating", label: "امتیازدهی", done: false, active: false },
-  ];
+export function RequestStatusScreen() {
+  const { navigate, param, startPayment, toast } = useApp();
+  // param 1 = just submitted from the wizard; otherwise the existing request 9001 waiting on a quote.
+  const [stage, setStage] = useState(param === 1 ? 0 : 2);
+  const [rejectedBy, setRejectedBy] = useState(false);
+  const [quoteRejected, setQuoteRejected] = useState(false);
+  const [techId, setTechId] = useState(1);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [quoteRejectOpen, setQuoteRejectOpen] = useState(false);
+  const [callOpen, setCallOpen] = useState(false);
+  const tech = extendedTechnicians.find((t) => t.id === techId)!;
+  const alternatives = extendedTechnicians.filter((t) => t.status === "آنلاین" && t.id !== techId);
+  const accepted = stage >= 1 && !rejectedBy;
+  const current = lifecycle[stage].key;
+
+  const advance = () => {
+    setRejectedBy(false);
+    setQuoteRejected(false);
+    setStage((value) => Math.min(value + 1, lifecycle.length - 1));
+  };
 
   return (
     <main className="page-wrap min-h-screen py-6 sm:py-9">
       <div className="mb-6 flex items-center gap-3">
         <Button className="icon-action" onClick={() => navigate("my-requests")} label="بازگشت">
-          <Icon name="arrow" />
+          <Icon name="back" />
         </Button>
         <div>
           <div className="text-xl font-black sm:text-2xl">وضعیت درخواست</div>
-          <div className="mt-1 text-xs text-muted">شماره درخواست: ۹۰۰۱</div>
+          <div className="mt-1 text-xs text-muted">شماره درخواست: ۹۰۰۱ · تعمیر پمپ آب</div>
         </div>
+      </div>
+
+      <div className="demo-bar mb-5">
+        <span className="font-black">پیش‌نمایش:</span>
+        <Button className="demo-chip" disabled={stage >= lifecycle.length - 1} onClick={advance}>مرحله بعد ←</Button>
+        <Button className="demo-chip" onClick={() => { setStage(0); setRejectedBy(true); }}>رد درخواست توسط نصاب</Button>
+        <Button className="demo-chip" onClick={() => { setStage(2); setRejectedBy(false); setQuoteRejected(false); }}>بازگشت به پیشنهاد قیمت</Button>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
-        {/* Timeline */}
         <div className="lg:col-span-2">
           <div className="surface-card">
             <div className="mb-5 font-black">مراحل درخواست</div>
-            {stages.map((stage, i) => (
-              <div key={stage.key} className="flex gap-4">
-                <div className="flex flex-col items-center">
-                  <div
-                    className={`flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-black transition-colors ${
-                      stage.done
-                        ? "bg-brand text-white"
-                        : stage.active
-                        ? "bg-brand-soft text-brand ring-2 ring-brand/30"
-                        : "bg-line text-muted"
-                    }`}
-                  >
-                    {stage.done ? <Icon name="check" size="sm" /> : (i + 1).toLocaleString("fa-IR")}
+            {lifecycle.map((item, i) => {
+              const done = i < stage;
+              const active = i === stage;
+              const label = item.key === "accepted" && rejectedBy ? "رد شد" : item.key === "accepted" && i < stage ? `پذیرفته شد توسط ${tech.name}` : item.label;
+              return (
+                <div key={item.key} className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <div className={`flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-black transition-colors ${done ? "bg-brand text-white" : active ? "bg-brand-soft text-brand ring-2 ring-brand/30" : "bg-line text-muted"}`}>
+                      {done ? <Icon name="check" size="sm" /> : formatNumber(i + 1)}
+                    </div>
+                    {i < lifecycle.length - 1 && <div className={`mt-1 min-h-6 w-0.5 flex-1 transition-colors ${done ? "bg-brand" : "bg-line"}`} />}
                   </div>
-                  {i < stages.length - 1 && (
-                    <div
-                      className={`mt-1 min-h-8 w-0.5 flex-1 transition-colors ${stage.done ? "bg-brand" : "bg-line"}`}
-                    />
-                  )}
-                </div>
-                <div className="flex-1 pb-5 pt-0.5">
-                  <div
-                    className={`flex flex-wrap items-center gap-2 text-sm font-bold ${
-                      stage.active ? "text-brand" : stage.done ? "text-ink" : "text-muted"
-                    }`}
-                  >
-                    {stage.label}
-                    {stage.active && (
-                      <span className="flex items-center gap-1 rounded-full bg-brand-soft px-2 py-0.5 text-xs font-bold text-brand">
-                        <span className="pulse-dot" />
-                        فعال
-                      </span>
+                  <div className="min-w-0 flex-1 pb-5 pt-0.5">
+                    <div className={`flex flex-wrap items-center gap-2 text-sm font-bold ${active ? "text-brand" : done ? "text-ink" : "text-muted"}`}>
+                      {label}
+                      {active && <span className="flex items-center gap-1 rounded-full bg-brand-soft px-2 py-0.5 text-xs font-bold text-brand"><span className="pulse-dot" />فعال</span>}
+                    </div>
+
+                    {active && current === "waiting" && !rejectedBy && (
+                      <div className="mt-3 rounded-2xl bg-canvas p-4 text-sm text-muted">درخواست برای {formatNumber(alternatives.length + 1)} نصاب آنلاین نزدیک ارسال شد. معمولاً کمتر از ۵ دقیقه پاسخ می‌دهند.</div>
+                    )}
+                    {active && current === "waiting" && rejectedBy && (
+                      <div className="mt-3 rounded-2xl border border-red-200 bg-red-50/60 p-4">
+                        <div className="text-sm font-black text-red-700">{tech.name} امکان انجام این درخواست را ندارد</div>
+                        <div className="mt-1 text-xs text-red-700/80">دلیل: خارج از ساعت کاری در زمان انتخاب‌شده</div>
+                        <div className="mt-4 text-sm font-bold">نصاب‌های پیشنهادی دیگر:</div>
+                        <div className="mt-2 space-y-2">
+                          {alternatives.map((alt) => (
+                            <div key={alt.id} className="flex items-center gap-3 rounded-xl bg-white p-3">
+                              <span className="avatar avatar-2 size-9"><Icon name="user" size="sm" /></span>
+                              <div className="min-w-0 flex-1"><div className="text-sm font-black">{alt.name}</div><div className="text-xs text-muted">⭐ {formatDecimal(alt.rating)} · حدود {formatDecimal(alt.distance)} کیلومتر</div></div>
+                              <Button className="rounded-xl bg-brand px-3 py-2 text-xs font-black text-white" onClick={() => { setTechId(alt.id); setRejectedBy(false); toast(`درخواست برای ${alt.name} ارسال شد`); }}>ارسال</Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {active && current === "quote" && !quoteRejected && (
+                      <div className="mt-3 rounded-2xl border border-brand/20 bg-brand-soft p-4">
+                        <div className="text-sm font-black">پیشنهاد قیمت {tech.name}</div>
+                        <div className="mt-2 text-2xl font-black">{formatPrice(LABOR + PARTS)}</div>
+                        <div className="mt-1 text-xs text-muted">دستمزد {formatPrice(LABOR)} + قطعات {formatPrice(PARTS)} (تعویض مکانیکال‌سیل)</div>
+                        <div className="mt-1 text-xs text-muted">پرداخت پس از پایان کار انجام می‌شود.</div>
+                        <div className="mt-4 flex gap-2">
+                          <Button className="primary-button h-11 flex-1 justify-center text-sm" onClick={() => { advance(); toast("پیشنهاد قیمت تأیید شد؛ نصاب حرکت می‌کند"); }}>تأیید پیشنهاد</Button>
+                          <Button className="secondary-button h-11 px-4 text-sm" onClick={() => setQuoteRejectOpen(true)}>رد کردن</Button>
+                        </div>
+                      </div>
+                    )}
+                    {active && current === "quote" && quoteRejected && (
+                      <div className="mt-3 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800">
+                        پیشنهاد رد شد و برای نصاب ارسال شد. می‌توانید منتظر پیشنهاد جدید بمانید یا نصاب دیگری انتخاب کنید.
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button className="rounded-xl bg-white px-3 py-2 text-xs font-black text-amber-800" onClick={() => { setQuoteRejected(false); toast("پیشنهاد جدید دریافت شد"); }}>شبیه‌سازی پیشنهاد جدید</Button>
+                          <Button className="rounded-xl bg-white px-3 py-2 text-xs font-black text-amber-800" onClick={() => { setStage(0); setRejectedBy(true); }}>انتخاب نصاب دیگر</Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {active && current === "enroute" && (
+                      <MapBg className="mt-3 h-36">
+                        <div className="tech-zone tech-zone-online" style={{ left: "35%", top: "40%", width: 70, height: 70 }} />
+                        <div className="absolute left-2/3 top-1/2 -translate-x-1/2 -translate-y-full"><div className="flex size-8 items-center justify-center rounded-full border-2 border-white bg-ink text-white shadow-lg"><Icon name="home" size="sm" /></div></div>
+                        <div className="absolute bottom-2 right-2 rounded-xl bg-white/95 px-3 py-2 text-xs font-bold shadow">زمان تقریبی رسیدن: ۲۵ دقیقه</div>
+                      </MapBg>
+                    )}
+                    {active && current === "working" && <div className="mt-2 text-xs text-muted">نصاب کار را از ساعت ۱۷:۱۰ شروع کرده است.</div>}
+                    {active && (current === "done" || current === "payment") && (
+                      <div className="mt-3 rounded-2xl border border-brand/20 bg-brand-soft p-4">
+                        <div className="text-sm font-black">کار انجام شد؛ فاکتور نهایی آماده است</div>
+                        <div className="mt-1 text-xs text-muted">دستمزد {formatPrice(LABOR)} + قطعات {formatPrice(PARTS)}</div>
+                        <Button className="primary-button mt-4 h-11 justify-center text-sm" onClick={() => navigate("payment")}>مشاهده فاکتور و پرداخت {formatPrice(LABOR + PARTS)}</Button>
+                      </div>
+                    )}
+                    {active && current === "rating" && (
+                      <Button className="primary-button mt-3 h-11 text-sm" onClick={() => navigate("rating")}>ثبت امتیاز و نظر</Button>
                     )}
                   </div>
-                  {stage.eta && !stage.active && (
-                    <div className="mt-0.5 text-xs text-muted">{stage.eta}</div>
-                  )}
-                  {stage.active && stage.key === "quote" && (
-                    <div className="mt-3 rounded-2xl border border-brand/20 bg-brand-soft p-4">
-                      <div className="text-sm font-black">پیشنهاد قیمت نصاب</div>
-                      <div className="mt-2 text-2xl font-black">{formatPrice(970000)}</div>
-                      <div className="mt-1 text-xs text-muted">
-                        دستمزد {formatPrice(650000)} + قطعات {formatPrice(320000)}
-                      </div>
-                      <div className="mt-4 flex gap-2">
-                        <Button
-                          className="primary-button flex-1 justify-center text-sm"
-                          onClick={() => navigate("payment")}
-                        >
-                          پذیرش و پرداخت
-                        </Button>
-                        <Button className="secondary-button px-4 text-sm" onClick={() => {}}>
-                          رد کردن
-                        </Button>
-                      </div>
-                    </div>
-                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        {/* Sidebar */}
         <div className="space-y-4">
-          {/* Technician card */}
           <div className="surface-card">
-            <div className="mb-4 font-black">نصاب شما</div>
+            <div className="mb-4 font-black">{accepted ? "نصاب شما" : "نصاب انتخاب‌شده"}</div>
             <div className="flex items-center gap-3">
-              <span className="avatar avatar-1 shrink-0">
-                <Icon name="user" />
-              </span>
+              <span className="avatar avatar-1 shrink-0"><Icon name="user" /></span>
               <div className="flex-1">
                 <div className="font-black">{tech.name}</div>
                 <div className="mt-0.5 text-xs text-muted">{tech.skill}</div>
-                <div className="mt-1.5 rating w-fit">
-                  <Icon name="star" size="sm" />
-                  {tech.rating.toLocaleString("fa-IR")}
-                </div>
+                <div className="mt-1.5 rating w-fit"><Icon name="star" size="sm" />{formatDecimal(tech.rating)}</div>
               </div>
             </div>
-            <Button
-              className="secondary-button mt-4 w-full justify-center"
-              onClick={() => navigate("technician-detail", tech.id)}
-            >
-              مشاهده پروفایل
-            </Button>
-            <div className="mt-3 rounded-2xl bg-canvas px-3 py-4 text-center text-xs">
-              <div className="font-bold">تماس با نصاب</div>
-              <div className="mt-1 font-black text-brand">۰۹۱۲ — — — ۷</div>
-              <div className="mt-1 text-muted">شماره شما برای نصاب نمایش داده نمی‌شود</div>
+            <Button className="secondary-button mt-4 w-full justify-center" onClick={() => navigate("technician-detail", tech.id)}>مشاهده پروفایل</Button>
+            <Button className="primary-button mt-2 w-full justify-center" disabled={!accepted} onClick={() => setCallOpen(true)}><Icon name="phone" />تماس با نصاب</Button>
+            <div className="mt-2 text-center text-xs text-muted">{accepted ? "شماره شما برای نصاب نمایش داده نمی‌شود" : "پس از پذیرش درخواست فعال می‌شود"}</div>
+          </div>
+
+          <div className="surface-card text-sm">
+            <div className="mb-3 font-black">جزئیات درخواست</div>
+            <div className="space-y-2 text-muted">
+              <div>تعمیر · پمپ آب جتی پنتاکس</div>
+              <div>سعادت‌آباد، خیابان دانشجو، پلاک ۱۲</div>
+              <div>امروز، ساعت ۱۷ تا ۲۰</div>
             </div>
           </div>
 
-          {/* Cancel */}
-          <Button
-            className="w-full rounded-2xl border border-red-200 py-3.5 text-sm font-bold text-red-600 hover:bg-red-50"
-            onClick={() => setShowCancel(true)}
-          >
-            لغو درخواست
-          </Button>
+          {stage < 4 && (
+            <Button className="w-full rounded-2xl border border-red-200 py-3.5 text-sm font-bold text-red-600 hover:bg-red-50" onClick={() => setCancelOpen(true)}>
+              لغو درخواست
+            </Button>
+          )}
+          <Button className="w-full py-2 text-xs font-bold text-muted hover:text-ink" onClick={() => navigate("support")}>گزارش مشکل به پشتیبانی</Button>
         </div>
       </div>
 
-      {/* Cancel modal */}
-      {showCancel && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(e) => e.target === e.currentTarget && setShowCancel(false)}
-        >
-          <div className="request-modal">
-            <div className="flex items-start justify-between gap-4">
-              <div className="text-xl font-black">لغو درخواست</div>
-              <Button className="icon-action" onClick={() => setShowCancel(false)} label="بستن">
-                <Icon name="close" />
-              </Button>
-            </div>
-            <div className="mt-5 space-y-2">
-              {cancelReasons.map((r) => (
-                <Button
-                  key={r}
-                  className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-right text-sm font-bold transition-all ${cancelReason === r ? "border-red-400 bg-red-50 text-red-600" : "border-line bg-canvas hover:border-red-200"}`}
-                  onClick={() => setCancelReason(r)}
-                >
-                  <span
-                    className={`flex size-4 shrink-0 items-center justify-center rounded-full border ${cancelReason === r ? "border-red-400 bg-red-400" : "border-faint"}`}
-                  >
-                    {cancelReason === r && <span className="size-2 rounded-full bg-white" />}
-                  </span>
-                  {r}
-                </Button>
-              ))}
-            </div>
-            <Button
-              className="mt-5 w-full rounded-2xl bg-red-600 py-3.5 text-sm font-extrabold text-white hover:bg-red-700 disabled:opacity-40"
-              disabled={!cancelReason}
-              onClick={() => { setShowCancel(false); navigate("my-requests"); }}
-            >
-              تأیید لغو درخواست
-            </Button>
-          </div>
+      <ConfirmDialog open={cancelOpen} onClose={() => setCancelOpen(false)} title="لغو درخواست" text={stage >= 3 ? "نصاب در مسیر است؛ ممکن است هزینه ایاب‌وذهاب (۱۵۰٬۰۰۰ تومان) دریافت شود." : "لغو پیش از حرکت نصاب رایگان است."}
+        confirmLabel="تأیید لغو درخواست" danger reasons={["تغییر برنامه", "مشکل خودش حل شد", "قیمت مناسب نبود", "نصاب دیگری پیدا کردم"]}
+        onConfirm={() => { toast("درخواست لغو شد"); navigate("my-requests"); }} />
+      <ConfirmDialog open={quoteRejectOpen} onClose={() => setQuoteRejectOpen(false)} title="رد پیشنهاد قیمت" text="دلیل را برای نصاب بفرستید تا بتواند پیشنهاد جدیدی بدهد."
+        confirmLabel="رد پیشنهاد" danger reasons={["قیمت بالاتر از انتظار است", "قطعات را خودم تهیه می‌کنم", "توضیح بیشتری درباره قطعات می‌خواهم"]}
+        onConfirm={() => setQuoteRejected(true)} />
+      <Modal open={callOpen} onClose={() => setCallOpen(false)} title={`تماس با ${tech.name}`} subtitle="تماس از طریق شماره واسط حنیفی برقرار می‌شود.">
+        <div className="mt-5 rounded-2xl bg-canvas p-5 text-center">
+          <div className="text-xs text-muted">شماره واسط</div>
+          <div className="mt-2 text-2xl font-black tracking-wider" dir="ltr">۰۲۱ ۹۱۰۰ ۴۲۱۷</div>
+          <div className="mt-1 text-xs text-muted">کد داخلی: ۳۸۲۵</div>
         </div>
-      )}
+        <a href="tel:02191004217" className="primary-button mt-5 justify-center"><Icon name="phone" />برقراری تماس</a>
+        <div className="mt-3 text-center text-xs leading-6 text-muted">این شماره فقط تا پایان این درخواست فعال است و شماره واقعی هیچ‌یک از طرفین نمایش داده نمی‌شود.</div>
+      </Modal>
     </main>
   );
 }
@@ -862,23 +841,20 @@ export function RequestStatusScreen({ navigate }: { navigate: Navigate }) {
 // TECHNICIAN DETAIL SCREEN
 // ─────────────────────────────────────────────
 
-export function TechnicianDetailScreen({
-  navigate,
-  technicianId,
-}: {
-  navigate: Navigate;
-  technicianId: number;
-}) {
-  const tech = extendedTechnicians.find((t) => t.id === technicianId) ?? extendedTechnicians[0];
+export function TechnicianDetailScreen() {
+  const { param, back, startService } = useApp();
+  const tech = extendedTechnicians.find((t) => t.id === param) ?? extendedTechnicians[0];
+  const available = tech.status === "آنلاین";
   const total = tech.ratingBreakdown.reduce((a, b) => a + b, 0);
 
   return (
     <main className="page-wrap min-h-screen py-6 sm:py-9">
       <div className="mb-6 flex items-center gap-3">
-        <Button className="icon-action" onClick={() => navigate("technicians")} label="بازگشت">
-          <Icon name="arrow" />
+        <Button className="icon-action" onClick={back} label="بازگشت">
+          <Icon name="back" />
         </Button>
         <div className="text-xl font-black sm:text-2xl">پروفایل متخصص</div>
+        <span className="mr-auto flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm"><span className={`size-2.5 rounded-full ${tech.status === "آنلاین" ? "bg-success" : tech.status === "مشغول" ? "bg-red-500" : "bg-faint"}`} />{tech.status}</span>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-3">
@@ -893,7 +869,7 @@ export function TechnicianDetailScreen({
               <div className="flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="text-xl font-black">{tech.name}</div>
-                  <span className="flex items-center gap-1 rounded-full bg-brand-soft px-2.5 py-1 text-xs font-bold text-brand">
+                  <span className="flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-bold text-green-700">
                     <Icon name="shield" size="sm" /> تأییدشده
                   </span>
                 </div>
@@ -912,7 +888,7 @@ export function TechnicianDetailScreen({
             </div>
             <div className="mt-5 grid grid-cols-4 gap-3 border-t border-line pt-5 text-center">
               {[
-                { v: tech.rating.toLocaleString("fa-IR"), l: "امتیاز" },
+                { v: formatDecimal(tech.rating), l: "امتیاز" },
                 { v: formatNumber(tech.jobs), l: "پروژه" },
                 { v: `${formatNumber(tech.acceptance)}٪`, l: "پذیرش" },
                 { v: `${formatNumber(tech.experience)} سال`, l: "تجربه" },
@@ -936,7 +912,7 @@ export function TechnicianDetailScreen({
                   <div key={star} className="flex items-center gap-3">
                     <div className="flex w-8 shrink-0 items-center gap-0.5 text-xs font-bold text-amber-600">
                       <Icon name="star" size="sm" />
-                      {star}
+                      {formatNumber(star)}
                     </div>
                     <div className="h-2 flex-1 overflow-hidden rounded-full bg-canvas">
                       <div
@@ -964,7 +940,7 @@ export function TechnicianDetailScreen({
                     <div className="font-bold">{r.author}</div>
                     <div className="rating">
                       <Icon name="star" size="sm" />
-                      {r.rating}
+                      {formatNumber(r.rating)}
                     </div>
                   </div>
                   <div className="mt-2 text-sm leading-7 text-muted">{r.text}</div>
@@ -1007,11 +983,13 @@ export function TechnicianDetailScreen({
 
           <Button
             className="primary-button w-full justify-center"
-            onClick={() => navigate("service-wizard")}
+            disabled={!available}
+            onClick={() => startService({ technicianId: tech.id })}
           >
             <Icon name="tool" />
             درخواست از این نصاب
           </Button>
+          {!available && <div className="text-center text-xs text-muted">این نصاب در حال حاضر {tech.status} است؛ درخواست شما به نصاب‌های آنلاین دیگر ارسال می‌شود.</div>}
         </div>
       </div>
     </main>
@@ -1022,7 +1000,8 @@ export function TechnicianDetailScreen({
 // PAYMENT SCREEN
 // ─────────────────────────────────────────────
 
-export function PaymentScreen({ navigate }: { navigate: Navigate }) {
+export function PaymentScreen() {
+  const { navigate, startPayment } = useApp();
   const laborPrice = 650000;
   const partsPrice = 320000;
   const total = laborPrice + partsPrice;
@@ -1031,7 +1010,7 @@ export function PaymentScreen({ navigate }: { navigate: Navigate }) {
     <main className="page-wrap min-h-screen py-6 sm:py-9">
       <div className="mb-6 flex items-center gap-3">
         <Button className="icon-action" onClick={() => navigate("request-status")} label="بازگشت">
-          <Icon name="arrow" />
+          <Icon name="back" />
         </Button>
         <div>
           <div className="text-xl font-black sm:text-2xl">پرداخت هزینه خدمات</div>
@@ -1053,7 +1032,7 @@ export function PaymentScreen({ navigate }: { navigate: Navigate }) {
               <span className="font-bold">{formatPrice(partsPrice)}</span>
             </div>
             <div className="rounded-2xl bg-canvas p-3 text-xs text-muted">
-              قطعات از انبار گروه حنیفی با ضمانت اصالت تأمین شده است.
+              قطعات از انبار گروه حنیفی با ضمانت اصالت تأمین شده است. سهم کمیسیون حنیفی از دستمزد کسر می‌شود و هزینه‌ای به شما اضافه نمی‌کند.
             </div>
             <div className="flex items-center justify-between border-t border-line pt-3 text-base font-black">
               <span>مبلغ قابل پرداخت</span>
@@ -1063,7 +1042,7 @@ export function PaymentScreen({ navigate }: { navigate: Navigate }) {
 
           <Button
             className="primary-button mt-6 w-full justify-center"
-            onClick={() => navigate("payment-gateway")}
+            onClick={() => startPayment({ kind: "service", amount: total, requestId: 9001 })}
           >
             <Icon name="wallet" />
             پرداخت آنلاین
@@ -1084,7 +1063,7 @@ export function PaymentScreen({ navigate }: { navigate: Navigate }) {
           </div>
           <div className="mr-auto rating">
             <Icon name="star" size="sm" />
-            {extendedTechnicians[0].rating.toLocaleString("fa-IR")}
+            {formatDecimal(extendedTechnicians[0].rating)}
           </div>
         </div>
       </div>
@@ -1096,15 +1075,28 @@ export function PaymentScreen({ navigate }: { navigate: Navigate }) {
 // MOCK BANK GATEWAY
 // ─────────────────────────────────────────────
 
-export function PaymentGatewayScreen({ navigate }: { navigate: Navigate }) {
+export function PaymentGatewayScreen() {
+  const { navigate, back, payment, updateOrder } = useApp();
   const [cardNumber, setCardNumber] = useState("");
   const [expiry, setExpiry] = useState("");
   const [cvv, setCvv] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const digits = (value: string) => value.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/\D/g, "");
+  const card = digits(cardNumber);
+  const ready = card.length === 16 && digits(cvv).length >= 3 && digits(expiry).length === 4 && digits(otp).length >= 5;
+
+  const finish = (ok: boolean) => {
+    if (payment.kind === "order") {
+      if (ok) updateOrder(payment.orderId, { status: "processing", paymentRef: `۶۲${formatId(payment.orderId)}۴۱۹۰۳` });
+      navigate(ok ? "checkout-success" : "checkout-failure", payment.orderId);
+    } else navigate(ok ? "payment-success" : "payment-failure");
+  };
 
   const handlePay = () => {
     setProcessing(true);
-    window.setTimeout(() => navigate("payment-success"), 2200);
+    window.setTimeout(() => finish(true), 1800);
   };
 
   return (
@@ -1114,14 +1106,14 @@ export function PaymentGatewayScreen({ navigate }: { navigate: Navigate }) {
           <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-[#1a2f5a] text-white">
             <Icon name="shield" />
           </div>
-          <div className="font-black text-[#1a2f5a]">درگاه پرداخت امن</div>
-          <div className="mt-1 text-xs text-muted">بانک ملت · خدمات الکترونیک</div>
+          <div className="font-black text-[#1a2f5a]">درگاه پرداخت اینترنتی (نمونه)</div>
+          <div className="mt-1 text-xs text-muted">شبکه الکترونیکی پرداخت کارت — شاپرک</div>
         </div>
 
         <div className="mb-5 rounded-2xl bg-canvas p-4 text-center">
           <div className="text-xs text-muted">مبلغ قابل پرداخت</div>
-          <div className="mt-1 text-2xl font-black">{formatPrice(970000)}</div>
-          <div className="mt-1 text-xs text-muted">گروه فنی صنعتی حنیفی</div>
+          <div className="mt-1 text-2xl font-black">{formatPrice(payment.amount)}</div>
+          <div className="mt-1 text-xs text-muted">پذیرنده: گروه فنی صنعتی حنیفی · {payment.kind === "order" ? `سفارش ${formatId(payment.orderId)}` : `خدمت ${formatId(payment.requestId)}`}</div>
         </div>
 
         <div className="space-y-3">
@@ -1129,53 +1121,43 @@ export function PaymentGatewayScreen({ navigate }: { navigate: Navigate }) {
             شماره کارت
             <input
               className="form-field mt-1 text-center font-mono tracking-widest"
-              placeholder="۱۲۳۴ — ۵۶۷۸ — ۹۰۱۲ — ۳۴۵۶"
-              value={cardNumber}
-              onChange={(e) => setCardNumber(e.target.value)}
-              maxLength={19}
+              dir="ltr"
+              inputMode="numeric"
+              placeholder="۶۰۳۷ ۹۹۰۰ ۰۰۰۰ ۰۰۰۰"
+              value={card.replace(/(\d{4})(?=\d)/g, "$1 ")}
+              onChange={(e) => setCardNumber(digits(e.target.value).slice(0, 16))}
             />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-xs font-bold text-muted">
-              تاریخ انقضا
-              <input
-                className="form-field mt-1 text-center"
-                placeholder="ماه / سال"
-                value={expiry}
-                onChange={(e) => setExpiry(e.target.value)}
-              />
+              CVV2
+              <input className="form-field mt-1 text-center font-mono" dir="ltr" inputMode="numeric" maxLength={4} value={cvv} onChange={(e) => setCvv(digits(e.target.value))} />
             </label>
             <label className="block text-xs font-bold text-muted">
-              CVV2
-              <input
-                className="form-field mt-1 text-center font-mono"
-                placeholder="—  —  —"
-                value={cvv}
-                onChange={(e) => setCvv(e.target.value)}
-              />
+              تاریخ انقضا (ماه/سال)
+              <input className="form-field mt-1 text-center" dir="ltr" inputMode="numeric" placeholder="۰۸/۰۷" value={expiry} onChange={(e) => setExpiry(e.target.value.slice(0, 5))} />
             </label>
           </div>
+          <label className="block text-xs font-bold text-muted">
+            رمز دوم پویا
+            <div className="mt-1 flex gap-2">
+              <input className="form-field mt-0 flex-1 text-center font-mono" dir="ltr" inputMode="numeric" maxLength={8} value={otp} onChange={(e) => setOtp(digits(e.target.value))} />
+              <Button className="shrink-0 rounded-2xl bg-[#1a2f5a] px-3 text-xs font-bold text-white" disabled={card.length !== 16 || otpSent} onClick={() => setOtpSent(true)}>{otpSent ? "ارسال شد" : "دریافت رمز"}</Button>
+            </div>
+          </label>
         </div>
 
-        <Button
-          className="primary-button mt-5 w-full justify-center"
-          disabled={processing}
-          onClick={handlePay}
-        >
-          {processing ? "در حال پرداخت..." : "پرداخت کن"}
+        <Button className="primary-button mt-5 w-full justify-center" disabled={processing || !ready} onClick={handlePay}>
+          {processing ? "در حال پرداخت..." : "پرداخت"}
         </Button>
-
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Button className="rounded-xl border border-line py-2 text-xs font-bold text-muted" onClick={back}>انصراف</Button>
+          <Button className="rounded-xl border border-line py-2 text-xs font-bold text-muted hover:text-red-500" onClick={() => finish(false)}>شبیه‌سازی خطا</Button>
+        </div>
         <div className="mt-4 flex items-center justify-center gap-2 text-xs text-muted">
-          <Icon name="shield" size="sm" />
-          اطلاعات شما رمزنگاری شده است
+          <Icon name="lock" size="sm" />
+          این صفحه نمونه است؛ اطلاعات کارت ارسال نمی‌شود
         </div>
-
-        <Button
-          className="mt-3 w-full py-2 text-center text-xs text-muted hover:text-red-500"
-          onClick={() => navigate("payment-failure")}
-        >
-          شبیه‌سازی خطای پرداخت
-        </Button>
       </div>
     </div>
   );
@@ -1185,18 +1167,19 @@ export function PaymentGatewayScreen({ navigate }: { navigate: Navigate }) {
 // PAYMENT SUCCESS
 // ─────────────────────────────────────────────
 
-export function PaymentSuccessScreen({ navigate }: { navigate: Navigate }) {
+export function PaymentSuccessScreen() {
+  const { navigate, payment } = useApp();
   return (
     <main className="page-wrap flex min-h-screen items-center justify-center py-10">
       <div className="mx-auto max-w-sm text-center">
-        <div className="mx-auto mb-5 flex size-24 items-center justify-center rounded-full bg-brand-soft text-brand">
+        <div className="mx-auto mb-5 flex size-24 items-center justify-center rounded-full bg-green-50 text-green-700">
           <Icon name="check" size="lg" />
         </div>
         <div className="text-2xl font-black">پرداخت موفق!</div>
         <div className="mt-3 text-sm leading-7 text-muted">
-          مبلغ {formatPrice(970000)} با موفقیت پرداخت شد.
+          مبلغ {formatPrice(payment.amount)} با موفقیت پرداخت شد.
           <br />
-          شماره پیگیری: ۱۴۰۳۱۱۲۲۸۷۴۳
+          شماره پیگیری: ۱۴۰۵۰۷۰۵۲۸۷۴۳
         </div>
         <div className="mt-8 space-y-3">
           <Button className="primary-button w-full justify-center" onClick={() => navigate("rating")}>
@@ -1218,7 +1201,8 @@ export function PaymentSuccessScreen({ navigate }: { navigate: Navigate }) {
 // PAYMENT FAILURE
 // ─────────────────────────────────────────────
 
-export function PaymentFailureScreen({ navigate }: { navigate: Navigate }) {
+export function PaymentFailureScreen() {
+  const { navigate } = useApp();
   return (
     <main className="page-wrap flex min-h-screen items-center justify-center py-10">
       <div className="mx-auto max-w-sm text-center">
@@ -1234,7 +1218,7 @@ export function PaymentFailureScreen({ navigate }: { navigate: Navigate }) {
         <div className="mt-8 space-y-3">
           <Button
             className="primary-button w-full justify-center"
-            onClick={() => navigate("payment-gateway")}
+            onClick={() => navigate("payment")}
           >
             تلاش مجدد
           </Button>
@@ -1254,7 +1238,8 @@ export function PaymentFailureScreen({ navigate }: { navigate: Navigate }) {
 // RATING SCREEN
 // ─────────────────────────────────────────────
 
-export function RatingScreen({ navigate }: { navigate: Navigate }) {
+export function RatingScreen() {
+  const { navigate } = useApp();
   const [stars, setStars] = useState(0);
   const [hoverStar, setHoverStar] = useState(0);
   const [tags, setTags] = useState<string[]>([]);
@@ -1278,9 +1263,9 @@ export function RatingScreen({ navigate }: { navigate: Navigate }) {
           <div className="mt-3 text-sm text-muted">از بازخورد شما سپاسگزاریم.</div>
           <Button
             className="primary-button mx-auto mt-8 justify-center"
-            onClick={() => navigate("home")}
+            onClick={() => navigate("my-requests")}
           >
-            بازگشت به خانه
+            درخواست‌های من
           </Button>
         </div>
       </main>
@@ -1291,7 +1276,7 @@ export function RatingScreen({ navigate }: { navigate: Navigate }) {
     <main className="page-wrap min-h-screen py-6 sm:py-9">
       <div className="mb-6 flex items-center gap-3">
         <Button className="icon-action" onClick={() => navigate("my-requests")} label="بازگشت">
-          <Icon name="arrow" />
+          <Icon name="back" />
         </Button>
         <div className="text-xl font-black sm:text-2xl">ثبت نظر و امتیاز</div>
       </div>
@@ -1307,7 +1292,7 @@ export function RatingScreen({ navigate }: { navigate: Navigate }) {
               <div className="font-black">{extendedTechnicians[0].name}</div>
               <div className="text-xs text-muted">{extendedTechnicians[0].skill}</div>
             </div>
-            <div className="mr-auto text-xs text-muted">تعمیر پمپ آب · ۱۸ آبان</div>
+            <div className="mr-auto text-xs text-muted">تعمیر پمپ آب · ۵ مهر</div>
           </div>
 
           {/* Star selector */}
@@ -1383,29 +1368,21 @@ export function RatingScreen({ navigate }: { navigate: Navigate }) {
 // MY REQUESTS SCREEN
 // ─────────────────────────────────────────────
 
-const statusLabel: Record<string, string> = {
-  waiting: "در انتظار پذیرش",
-  accepted: "پذیرفته‌شده",
-  quote: "در انتظار تأیید قیمت",
-  enroute: "نصاب در راه",
-  done: "انجام‌شده",
-  paid: "پرداخت‌شده",
-  rated: "تکمیل‌شده",
-  cancelled: "لغوشده",
-};
+const statusLabel: Record<string, string> = requestStatusLabel;
 
 const statusColor: Record<string, string> = {
-  waiting: "bg-brand-soft text-brand",
-  accepted: "bg-brand-soft text-brand",
+  waiting: "bg-canvas text-ink",
+  accepted: "bg-canvas text-ink",
   quote: "bg-amber-50 text-amber-700",
   enroute: "bg-sky-50 text-sky-700",
-  done: "bg-brand-soft text-brand",
-  paid: "bg-brand-soft text-brand",
-  rated: "bg-brand-soft text-brand",
+  done: "bg-green-50 text-green-700",
+  paid: "bg-green-50 text-green-700",
+  rated: "bg-green-50 text-green-700",
   cancelled: "bg-red-50 text-red-600",
 };
 
-export function MyRequestsScreen({ navigate }: { navigate: Navigate }) {
+export function MyRequestsScreen() {
+  const { navigate } = useApp();
   const [tab, setTab] = useState<"active" | "done" | "cancelled">("active");
 
   const tabData = {
@@ -1424,7 +1401,7 @@ export function MyRequestsScreen({ navigate }: { navigate: Navigate }) {
     <main className="page-wrap min-h-screen py-6 sm:py-9">
       <div className="mb-6 flex items-center gap-3">
         <Button className="icon-action" onClick={() => navigate("home")} label="بازگشت">
-          <Icon name="arrow" />
+          <Icon name="back" />
         </Button>
         <div>
           <div className="text-xl font-black sm:text-2xl">درخواست‌های من</div>
@@ -1494,7 +1471,7 @@ export function MyRequestsScreen({ navigate }: { navigate: Navigate }) {
                     <div className="font-black">
                       {req.serviceType} {req.deviceType}
                     </div>
-                    <div className="mt-1 text-xs text-muted">شماره {formatNumber(req.id)}</div>
+                    <div className="mt-1 text-xs text-muted">شماره {formatId(req.id)}</div>
                   </div>
                   <span
                     className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${statusColor[req.status] ?? "bg-canvas text-muted"}`}
@@ -1510,7 +1487,7 @@ export function MyRequestsScreen({ navigate }: { navigate: Navigate }) {
                     <span className="text-sm text-muted">{tech.name}</span>
                     <span className="rating mr-auto text-xs">
                       <Icon name="star" size="sm" />
-                      {tech.rating.toLocaleString("fa-IR")}
+                      {formatDecimal(tech.rating)}
                     </span>
                   </div>
                 )}

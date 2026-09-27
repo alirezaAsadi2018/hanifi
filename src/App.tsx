@@ -1,175 +1,97 @@
-import { useState } from "react";
-import { BottomNav, Footer, Header, RoleSwitcher } from "./components/Navigation";
 import Icon from "./components/Icon";
-import { products } from "./data/mock";
+import { BottomNav, Footer, Header, RoleSwitcher } from "./components/Navigation";
+import { AppProvider, useApp } from "./state";
+import type { Screen } from "./types";
 import {
-  CartScreen,
-  CustomerHome,
-  NotificationsScreen,
-  OrdersScreen,
-  ProductScreen,
-  ProfileScreen,
-  SearchScreen,
-  ServiceScreen,
-  StoreScreen,
-  TechniciansScreen,
-} from "./screens/CustomerScreens";
+  AddressesScreen, InfoScreen, LoginScreen, NotificationSettingsScreen, NotificationsScreen, ProfileScreen, SupportScreen,
+} from "./screens/AccountScreens";
+import AdminPanel from "./screens/AdminPanel";
+import { CustomerHome, TechniciansScreen } from "./screens/CustomerScreens";
 import {
-  AdminDashboard,
-  AdminProducts,
-  AdminTechnicians,
-  TechnicianDashboard,
-  TechnicianProfile,
-  TechnicianRequests,
-} from "./screens/RoleScreens";
-import {
-  MyRequestsScreen,
-  PaymentFailureScreen,
-  PaymentGatewayScreen,
-  PaymentScreen,
-  PaymentSuccessScreen,
-  RatingScreen,
-  RequestStatusScreen,
-  ServiceWizardScreen,
-  TechnicianDetailScreen,
+  MyRequestsScreen, PaymentFailureScreen, PaymentGatewayScreen, PaymentScreen, PaymentSuccessScreen, RatingScreen,
+  RequestStatusScreen, ServiceWizardScreen, TechnicianDetailScreen,
 } from "./screens/ServiceFlow";
-import type { Role, Screen } from "./types";
+import {
+  CartScreen, CheckoutResultScreen, CheckoutScreen, InvoiceScreen, OrderDetailScreen, OrdersScreen, ProductScreen, SearchScreen, StoreScreen,
+} from "./screens/ShopScreens";
+import TechnicianApp from "./screens/TechnicianApp";
 
-export default function App() {
-  const [role, setRole] = useState<Role>("customer");
-  const [screen, setScreen] = useState<Screen>("home");
-  const [selectedProductId, setSelectedProductId] = useState(1);
-  const [selectedTechnicianId, setSelectedTechnicianId] = useState(1);
-  const [wizardPreservice, setWizardPreservice] = useState("");
-  const [cart, setCart] = useState<number[]>([]);
-  const [notice, setNotice] = useState("");
+/** Screens that need an account: the router shows login in place and continues there afterwards. */
+const protectedScreens: Screen[] = ["checkout", "orders", "order-detail", "invoice", "profile", "addresses", "notification-settings", "my-requests", "request-status", "payment", "rating"];
+/** Screens that render without the store header/footer. */
+const fullscreenScreens: Screen[] = ["service-wizard", "payment-gateway"];
 
-  const navigate = (target: Screen, id?: number) => {
-    if (target === "product" && id) setSelectedProductId(id);
-    if (target === "technician-detail" && id) setSelectedTechnicianId(id);
-    setScreen(target);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+function CustomerApp() {
+  const { screen, param, user } = useApp();
 
-  const handleQuickService = (service: string) => {
-    setWizardPreservice(service);
-    setScreen("service-wizard");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const switchRole = (nextRole: Role) => {
-    setRole(nextRole);
-    setScreen(
-      nextRole === "customer"
-        ? "home"
-        : nextRole === "technician"
-        ? "technician-dashboard"
-        : "admin-dashboard",
-    );
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const addToCart = (id: number) => {
-    setCart((current) => [...current, id]);
-    setNotice("محصول به سبد خرید اضافه شد");
-    window.setTimeout(() => setNotice(""), 2200);
-  };
-
-  const changeQuantity = (id: number, add: boolean) => {
-    if (add) setCart((current) => [...current, id]);
-    else
-      setCart((current) => {
-        const index = current.lastIndexOf(id);
-        return index < 0 ? current : current.filter((_, i) => i !== index);
-      });
-  };
-
-  const selectedProduct = products.find((item) => item.id === selectedProductId) ?? products[0];
-  const common = { navigate, addToCart };
-
-  // Fullscreen screens skip the shell layout
-  const fullscreenScreens: Screen[] = ["service-wizard", "payment-gateway"];
-  const isFullscreen = fullscreenScreens.includes(screen);
-
-  const renderScreen = () => {
+  const render = () => {
+    if (protectedScreens.includes(screen) && !user) return <LoginScreen stay />;
     switch (screen) {
-      case "store":
-        return <StoreScreen {...common} />;
-      case "product":
-        return <ProductScreen {...common} product={selectedProduct} />;
-      case "service":
-        return <ServiceScreen navigate={navigate} />;
-      case "service-wizard":
-        return <ServiceWizardScreen navigate={navigate} preselectedService={wizardPreservice} />;
-      case "request-status":
-        return <RequestStatusScreen navigate={navigate} />;
-      case "technician-detail":
-        return <TechnicianDetailScreen navigate={navigate} technicianId={selectedTechnicianId} />;
-      case "payment":
-        return <PaymentScreen navigate={navigate} />;
-      case "payment-gateway":
-        return <PaymentGatewayScreen navigate={navigate} />;
-      case "payment-success":
-        return <PaymentSuccessScreen navigate={navigate} />;
-      case "payment-failure":
-        return <PaymentFailureScreen navigate={navigate} />;
-      case "rating":
-        return <RatingScreen navigate={navigate} />;
-      case "my-requests":
-        return <MyRequestsScreen navigate={navigate} />;
-      case "technicians":
-        return <TechniciansScreen navigate={navigate} />;
-      case "cart":
-        return <CartScreen cart={cart} changeQuantity={changeQuantity} navigate={navigate} />;
-      case "orders":
-        return <OrdersScreen navigate={navigate} />;
-      case "notifications":
-        return <NotificationsScreen navigate={navigate} />;
-      case "profile":
-        return <ProfileScreen navigate={navigate} />;
-      case "search":
-        return <SearchScreen {...common} />;
-      case "technician-dashboard":
-        return <TechnicianDashboard navigate={navigate} />;
-      case "technician-requests":
-        return <TechnicianRequests navigate={navigate} />;
-      case "technician-profile":
-        return <TechnicianProfile navigate={navigate} />;
-      case "admin-dashboard":
-        return <AdminDashboard navigate={navigate} />;
-      case "admin-products":
-        return <AdminProducts navigate={navigate} />;
-      case "admin-technicians":
-        return <AdminTechnicians navigate={navigate} />;
-      default:
-        return <CustomerHome {...common} onQuickService={handleQuickService} />;
+      case "store": return <StoreScreen key={param} />;
+      case "product": return <ProductScreen key={param} />;
+      case "search": return <SearchScreen />;
+      case "cart": return <CartScreen />;
+      case "checkout": return <CheckoutScreen />;
+      case "checkout-success": return <CheckoutResultScreen success />;
+      case "checkout-failure": return <CheckoutResultScreen success={false} />;
+      case "orders": return <OrdersScreen />;
+      case "order-detail": return <OrderDetailScreen key={param} />;
+      case "invoice": return <InvoiceScreen />;
+      case "login": return <LoginScreen />;
+      case "profile": return <ProfileScreen />;
+      case "addresses": return <AddressesScreen />;
+      case "notification-settings": return <NotificationSettingsScreen />;
+      case "support": return <SupportScreen />;
+      case "info": return <InfoScreen key={param} />;
+      case "notifications": return <NotificationsScreen />;
+      case "technicians": return <TechniciansScreen />;
+      case "technician-detail": return <TechnicianDetailScreen key={param} />;
+      case "service-wizard": return <ServiceWizardScreen />;
+      case "request-status": return <RequestStatusScreen key={param} />;
+      case "payment": return <PaymentScreen />;
+      case "payment-gateway": return <PaymentGatewayScreen />;
+      case "payment-success": return <PaymentSuccessScreen />;
+      case "payment-failure": return <PaymentFailureScreen />;
+      case "rating": return <RatingScreen />;
+      case "my-requests": return <MyRequestsScreen />;
+      default: return <CustomerHome />;
     }
   };
 
-  if (isFullscreen) {
-    return (
-      <div className="min-h-screen bg-canvas text-ink" dir="rtl">
-        {renderScreen()}
-        <RoleSwitcher role={role} onChange={switchRole} />
-      </div>
-    );
-  }
+  if (fullscreenScreens.includes(screen)) return <div className="min-h-screen bg-canvas text-ink">{render()}</div>;
 
   return (
-    <div className="min-h-screen bg-canvas text-ink" dir="rtl">
-      <Header navigate={navigate} cartCount={cart.length} role={role} />
-      {renderScreen()}
-      <Footer navigate={navigate} />
-      {role === "customer" && <BottomNav screen={screen} navigate={navigate} />}
-      <RoleSwitcher role={role} onChange={switchRole} />
+    <div className="min-h-screen bg-canvas text-ink">
+      <Header />
+      {render()}
+      <Footer />
+      <BottomNav />
+    </div>
+  );
+}
+
+function Shell() {
+  const { role, notice } = useApp();
+  return (
+    <>
+      {role === "customer" && <CustomerApp />}
+      {role === "technician" && <TechnicianApp />}
+      {role === "admin" && <AdminPanel />}
+      <RoleSwitcher />
       {notice && (
-        <div className="toast">
-          <span className="check-badge">
-            <Icon name="check" size="sm" />
-          </span>
+        <div className="toast no-print" role="status">
+          <span className="check-badge"><Icon name="check" size="sm" /></span>
           {notice}
         </div>
       )}
-    </div>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <AppProvider>
+      <Shell />
+    </AppProvider>
   );
 }
