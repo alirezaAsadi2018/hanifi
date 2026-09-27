@@ -1,1 +1,297 @@
-@import 'tailwindcss';
+@import url("https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Vazirmatn", Tahoma, sans-serif;
+  --color-canvas: #f6f7f9;
+  --color-ink: #14221f;
+  --color-muted: #64736f;
+  --color-faint: #a0aaa7;
+  --color-line: #e5eae8;
+  --color-brand: #087f68;
+  --color-brand-dark: #056451;
+  --color-brand-soft: #e8f5f1;
+  --color-accent: #e8b13f;
+  --color-success: #199b66;
+}
+
+@layer base {
+  body {
+    margin: 0;
+    min-width: 320px;
+    background: var(--color-canvas);
+    font-family: var(--font-sans);
+    color: var(--color-ink);
+  }
+
+  ::selection {
+    background: var(--color-brand-soft);
+    color: var(--color-brand-dark);
+  }
+}
+
+@layer components {
+  .page-wrap {
+    width: min(100% - 2rem, 1240px);
+    margin-inline: auto;
+  }
+
+  .brand-mark {
+    @apply flex size-11 items-center justify-center rounded-2xl bg-brand text-white shadow-lg shadow-brand/20;
+  }
+
+  .nav-item {
+    @apply rounded-xl px-3 py-2 text-sm font-bold text-muted hover:bg-canvas hover:text-ink;
+  }
+
+  .nav-item-active {
+    @apply bg-brand-soft text-brand;
+  }
+
+  .search-box {
+    @apply h-11 rounded-2xl border border-line bg-canvas px-4 hover:border-brand/30 hover:bg-white;
+  }
+
+  .location-pill {
+    @apply h-11 rounded-xl border border-line px-3 text-xs font-bold text-muted hover:border-brand/30;
+  }
+
+  .icon-action {
+    @apply flex size-11 shrink-0 items-center justify-center rounded-xl border border-line bg-white text-muted hover:border-brand/30 hover:bg-brand-soft hover:text-brand;
+  }
+
+  .profile-action {
+    @apply h-11 shrink-0 rounded-xl bg-ink px-4 text-xs font-bold text-white hover:bg-brand-dark;
+  }
+
+  .notification-dot {
+    @apply absolute right-2 top-2 size-2 rounded-full bg-accent ring-2 ring-white;
+  }
+
+  .cart-count {
+    @apply absolute -left-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-brand px-1 text-xs font-bold text-white ring-2 ring-white;
+  }
+
+  .hero-grid {
+    @apply grid min-h-128 rounded-3xl bg-white shadow-sm lg:grid-cols-2;
+  }
+
+  .hero-copy {
+    @apply flex flex-col justify-center p-7 sm:p-10 lg:p-14;
+  }
+
+  .eyebrow {
+    @apply flex w-fit items-center gap-2 rounded-full bg-brand-soft px-3 py-2 text-xs font-extrabold text-brand;
+  }
+
+  .eyebrow-light {
+    @apply bg-white/10 text-white/85;
+  }
+
+  .pulse-dot {
+    @apply relative size-2 rounded-full bg-success after:absolute after:inset-0 after:animate-ping after:rounded-full after:bg-success;
+  }
+
+  .display-title {
+    @apply mt-5 text-4xl font-black leading-relaxed tracking-tight sm:text-5xl lg:text-6xl;
+  }
+
+  .primary-button {
+    @apply flex h-13 items-center gap-3 rounded-2xl bg-brand px-5 text-sm font-extrabold text-white shadow-lg shadow-brand/20 hover:-translate-y-0.5 hover:bg-brand-dark;
+  }
+
+  .secondary-button {
+    @apply flex h-13 items-center gap-3 rounded-2xl border border-line bg-white px-5 text-sm font-extrabold hover:-translate-y-0.5 hover:border-brand/30 hover:text-brand;
+  }
+
+  .check-badge {
+    @apply flex size-5 items-center justify-center rounded-full bg-brand-soft text-brand;
+  }
+
+  .hero-visual {
+    @apply relative hidden min-h-128 overflow-hidden rounded-l-3xl lg:block;
+  }
+
+  .hero-overlay {
+    @apply absolute inset-0 bg-gradient-to-t from-ink/55 via-transparent to-transparent;
+  }
+
+  .floating-stat {
+    @apply absolute flex items-center gap-3 rounded-2xl border border-white/50 bg-white/95 p-4 shadow-xl backdrop-blur;
+  }
+
+  .stat-top {
+    @apply left-6 top-6;
+  }
+
+  .stat-bottom {
+    @apply bottom-6 right-6;
+  }
+
+  .stat-icon {
+    @apply flex size-10 items-center justify-center rounded-xl bg-brand-soft text-brand;
+  }
+
+  .status-online {
+    @apply inline-block size-2.5 shrink-0 rounded-full bg-success ring-4 ring-success/15;
+  }
+
+  .section-heading {
+    @apply mb-5 flex items-end justify-between gap-4;
+  }
+
+  .section-title {
+    @apply text-xl font-black lg:text-2xl;
+  }
+
+  .section-caption {
+    @apply mt-1 text-xs text-muted;
+  }
+
+  .text-link {
+    @apply flex shrink-0 items-center gap-2 text-xs font-extrabold text-brand hover:gap-3;
+  }
+
+  .category-card {
+    @apply flex items-center gap-4 rounded-2xl border border-line bg-white p-4 shadow-sm hover:-translate-y-1 hover:border-brand/30 hover:shadow-lg hover:shadow-ink/5;
+  }
+
+  .category-card-active {
+    @apply border-brand/40 bg-brand-soft;
+  }
+
+  .category-icon {
+    @apply flex size-12 shrink-0 items-center justify-center rounded-2xl bg-brand-soft text-brand;
+  }
+
+  .product-card {
+    @apply overflow-hidden rounded-3xl border border-line bg-white transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-ink/5;
+  }
+
+  .product-image-wrap {
+    @apply relative h-48 overflow-hidden bg-white;
+  }
+
+  .product-image {
+    @apply h-full w-full object-cover transition-transform duration-500;
+  }
+
+  .product-card:hover .product-image {
+    @apply scale-105;
+  }
+
+  .product-badge {
+    @apply absolute right-3 top-3 rounded-lg bg-white/95 px-2.5 py-1 text-xs font-extrabold text-brand shadow-sm backdrop-blur;
+  }
+
+  .add-button {
+    @apply flex size-11 items-center justify-center rounded-xl bg-ink text-white hover:bg-brand;
+  }
+
+  .service-band {
+    @apply overflow-hidden bg-ink;
+    background-image: radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--color-brand) 35%, transparent), transparent 30%);
+  }
+
+  .service-chip {
+    @apply rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-white/80 hover:border-white/30 hover:bg-white/10 hover:text-white;
+  }
+
+  .technician-panel {
+    @apply rounded-3xl bg-white p-4 shadow-2xl shadow-black/20 sm:p-5;
+  }
+
+  .technician-row {
+    @apply flex items-center gap-3 rounded-2xl border border-transparent bg-canvas p-3 hover:border-brand/20;
+  }
+
+  .avatar {
+    @apply flex size-11 shrink-0 items-center justify-center rounded-full;
+  }
+
+  .avatar-1 {
+    @apply bg-amber-100 text-amber-700;
+  }
+
+  .avatar-2 {
+    @apply bg-sky-100 text-sky-700;
+  }
+
+  .avatar-3 {
+    @apply bg-violet-100 text-violet-700;
+  }
+
+  .rating {
+    @apply flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-xs font-black text-amber-700;
+  }
+
+  .trust-grid {
+    @apply grid gap-3 rounded-3xl border border-line bg-white p-5 md:grid-cols-3 md:p-7;
+  }
+
+  .trust-item {
+    @apply flex items-center gap-4 p-2 md:border-l md:border-line md:last:border-l-0;
+  }
+
+  .trust-icon {
+    @apply flex size-12 shrink-0 items-center justify-center rounded-2xl bg-brand-soft text-brand;
+  }
+
+  .mobile-nav {
+    @apply fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-line bg-white/95 px-2 py-2 shadow-2xl backdrop-blur-xl;
+  }
+
+  .mobile-nav-item {
+    @apply flex flex-col items-center gap-1 text-xs font-bold text-muted;
+  }
+
+  .modal-backdrop {
+    @apply fixed inset-0 z-50 flex items-end justify-center bg-ink/55 p-0 backdrop-blur-sm sm:items-center sm:p-4;
+  }
+
+  .request-modal {
+    @apply w-full max-w-xl rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl sm:p-8;
+    animation: modal-in 260ms ease-out;
+  }
+
+  .step-bar {
+    @apply h-1 flex-1 rounded-full bg-line;
+  }
+
+  .step-bar-active {
+    @apply bg-brand;
+  }
+
+  .service-option {
+    @apply flex items-center gap-3 rounded-2xl border border-line p-4 hover:border-brand/40 hover:bg-brand-soft;
+  }
+
+  .success-mark {
+    @apply mx-auto flex size-16 items-center justify-center rounded-full bg-brand-soft text-brand;
+  }
+
+  .toast {
+    @apply fixed bottom-24 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-2xl bg-ink px-5 py-3 text-sm font-bold text-white shadow-2xl md:bottom-8;
+    animation: toast-in 220ms ease-out;
+  }
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(1rem) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, .75rem); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@media (max-width: 767px) {
+  .page-wrap {
+    width: min(100% - 1.25rem, 1240px);
+  }
+
+  main {
+    padding-bottom: 5rem;
+  }
+}
