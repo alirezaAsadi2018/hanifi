@@ -26,7 +26,7 @@ export function Header({ navigate, cartCount, role }: { navigate: Navigate; cart
             <div className="hidden items-center gap-1 lg:flex">
               <Button className="nav-item" onClick={() => navigate("home")}>خانه</Button>
               <Button className="nav-item" onClick={() => navigate("store")}>فروشگاه</Button>
-              <Button className="nav-item" onClick={() => navigate("service")}>خدمات فنی</Button>
+              <Button className="nav-item" onClick={() => navigate("service-wizard")}>خدمات فنی</Button>
               <Button className="nav-item" onClick={() => navigate("technicians")}>نصاب‌ها</Button>
             </div>
           )}
@@ -44,7 +44,7 @@ export function Header({ navigate, cartCount, role }: { navigate: Navigate; cart
 
 export function BottomNav({ screen, navigate }: { screen: Screen; navigate: Navigate }) {
   const items: [string, IconName, Screen][] = [
-    ["خانه", "home", "home"], ["فروشگاه", "bag", "store"], ["خدمات", "tool", "service"], ["سفارش‌ها", "orders", "orders"], ["حساب من", "user", "profile"],
+    ["خانه", "home", "home"], ["فروشگاه", "bag", "store"], ["خدمات", "tool", "service-wizard"], ["درخواست‌ها", "orders", "my-requests"], ["حساب من", "user", "profile"],
   ];
   return <nav className="mobile-nav sm:hidden">{items.map(([label, icon, target]) => <Button key={target} onClick={() => navigate(target)} className={`mobile-nav-item ${screen === target ? "text-brand" : ""}`}><Icon name={icon} /><span>{label}</span></Button>)}</nav>;
 }

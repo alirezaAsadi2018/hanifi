@@ -7,7 +7,7 @@ import { Button, formatNumber, formatPrice, Modal } from "../components/ui";
 
 type CommonProps = { navigate: Navigate; addToCart: (id: number) => void };
 
-export function CustomerHome({ navigate, addToCart }: CommonProps) {
+export function CustomerHome({ navigate, addToCart, onQuickService }: CommonProps & { onQuickService?: (service: string) => void }) {
   return (
     <main>
       <section className="page-wrap py-5 lg:py-8">
@@ -17,9 +17,16 @@ export function CustomerHome({ navigate, addToCart }: CommonProps) {
             <div className="display-title">خرید مطمئن،<br /><span className="text-brand">خدمات حرفه‌ای</span></div>
             <div className="mt-4 max-w-xl text-sm leading-7 text-muted lg:text-base">از انتخاب و خرید تجهیزات صنعتی تا نصب و تعمیر؛ متخصصان تأییدشده حنیفی در سریع‌ترین زمان کنار شما هستند.</div>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Button className="primary-button" onClick={() => navigate("service")}><Icon name="tool" /><span>درخواست سرویس‌کار</span><Icon name="arrow" size="sm" /></Button>
+              <Button className="primary-button" onClick={() => navigate("service-wizard")}><Icon name="tool" /><span>درخواست سرویس‌کار</span><Icon name="arrow" size="sm" /></Button>
               <Button className="secondary-button" onClick={() => navigate("store")}><Icon name="bag" /><span>مشاهده فروشگاه</span></Button>
             </div>
+            {onQuickService && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {["نصب", "تعمیر", "عیب‌یابی", "سرویس دوره‌ای"].map((s) => (
+                  <Button key={s} className="filter-chip" onClick={() => onQuickService(s)}>{s}</Button>
+                ))}
+              </div>
+            )}
             <div className="mt-8 flex flex-wrap gap-5 text-xs text-muted">{["ضمانت اصالت", "ارسال سریع", "پشتیبانی تخصصی"].map((item) => <div key={item} className="flex items-center gap-2"><span className="check-badge"><Icon name="check" size="sm" /></span>{item}</div>)}</div>
           </div>
           <div className="hero-visual"><img className="h-full w-full object-cover" src="https://images.unsplash.com/photo-1655874837055-7adc909ae602?auto=format&fit=crop&w=1200&q=88" alt="تجهیزات صنعتی در کارخانه" /><div className="hero-overlay" /><div className="floating-stat stat-top"><span className="status-online" /><div><div className="font-extrabold">{formatNumber(28)} متخصص آنلاین</div><div className="mt-1 text-xs text-muted">آماده خدمت در محدوده شما</div></div></div></div>
@@ -37,7 +44,7 @@ export function CustomerHome({ navigate, addToCart }: CommonProps) {
       </section>
       <section className="service-band">
         <div className="page-wrap grid gap-8 py-10 lg:grid-cols-2 lg:items-center lg:py-14">
-          <div><div className="eyebrow eyebrow-light"><span className="pulse-dot" /> اعزام سریع در محدوده شما</div><div className="mt-4 text-3xl font-black leading-tight text-white">متخصص مطمئن، همین نزدیکی است</div><div className="mt-4 text-sm leading-7 text-white/65">نزدیک‌ترین نصاب‌های احراز هویت‌شده و آنلاین را پیدا کنید.</div><Button className="primary-button mt-6" onClick={() => navigate("technicians")}>مشاهده متخصصان<Icon name="arrow" /></Button></div>
+          <div><div className="eyebrow eyebrow-light"><span className="pulse-dot" /> اعزام سریع در محدوده شما</div><div className="mt-4 text-3xl font-black leading-tight text-white">متخصص مطمئن، همین نزدیکی است</div><div className="mt-4 text-sm leading-7 text-white/65">نزدیک‌ترین نصاب‌های احراز هویت‌شده و آنلاین را پیدا کنید.</div><Button className="primary-button mt-6" onClick={() => navigate("technicians")}>مشاهده متخصصان<Icon name="arrow" /></Button><Button className="secondary-button mt-3 border-white/20 bg-white/10 text-white hover:bg-white/15 hover:text-white" onClick={() => navigate("service-wizard")}><Icon name="tool" />ثبت درخواست سریع</Button></div>
           <TechnicianList navigate={navigate} />
         </div>
       </section>
@@ -90,11 +97,11 @@ function Choice({ title, items, icon, onChoose }: { title: string; items: string
 }
 
 function TechnicianList({ navigate }: { navigate: Navigate }) {
-  return <div className="technician-panel"><div className="mb-4 flex items-center justify-between"><div className="font-black">متخصصان نزدیک شما</div><div className="flex items-center gap-2 text-xs font-bold text-success"><span className="status-online" /> آنلاین</div></div><div className="space-y-2">{technicians.map((tech, index) => <Button className="technician-row w-full text-right" key={tech.id} onClick={() => navigate("service")}><span className={`avatar avatar-${index + 1}`}><Icon name="user" /></span><span className="min-w-0 flex-1"><span className="block font-extrabold">{tech.name}</span><span className="mt-1 block truncate text-xs text-muted">{tech.skill} · {formatNumber(tech.jobs)} پروژه</span></span><span className="rating"><Icon name="star" size="sm" /> {tech.rating.toLocaleString("fa-IR")}</span></Button>)}</div></div>;
+  return <div className="technician-panel"><div className="mb-4 flex items-center justify-between"><div className="font-black">متخصصان نزدیک شما</div><div className="flex items-center gap-2 text-xs font-bold text-success"><span className="status-online" /> آنلاین</div></div><div className="space-y-2">{technicians.map((tech, index) => <Button className="technician-row w-full text-right" key={tech.id} onClick={() => navigate("technician-detail", tech.id)}><span className={`avatar avatar-${index + 1}`}><Icon name="user" /></span><span className="min-w-0 flex-1"><span className="block font-extrabold">{tech.name}</span><span className="mt-1 block truncate text-xs text-muted">{tech.skill} · {formatNumber(tech.jobs)} پروژه</span></span><span className="rating"><Icon name="star" size="sm" /> {tech.rating.toLocaleString("fa-IR")}</span></Button>)}</div></div>;
 }
 
 export function TechniciansScreen({ navigate }: { navigate: Navigate }) {
-  return <Page title="متخصصان نزدیک شما" subtitle="همه افراد پس از احراز هویت و بررسی مدارک فعال شده‌اند" back={() => navigate("home")}><div className="mb-5 flex h-48 items-center justify-center rounded-3xl bg-brand-soft text-center text-brand"><div><Icon name="pin" size="lg" /><div className="mt-2 font-black">نقشه محدوده فعالیت</div><div className="mt-1 text-xs">موقعیت دقیق برای حفظ حریم خصوصی نمایش داده نمی‌شود.</div></div></div><div className="grid gap-4 lg:grid-cols-3">{technicians.map((tech, index) => <div className="surface-card" key={tech.id}><div className="flex items-center gap-3"><span className={`avatar avatar-${index + 1}`}><Icon name="user" /></span><div><div className="font-black">{tech.name}</div><div className="text-xs text-muted">{tech.skill}</div></div><span className="mr-auto status-online" /></div><div className="my-5 grid grid-cols-3 gap-2 text-center"><Metric value={tech.rating.toLocaleString("fa-IR")} label="امتیاز" /><Metric value={formatNumber(tech.jobs)} label="پروژه" /><Metric value={`${formatNumber(tech.acceptance)}٪`} label="پذیرش" /></div><Button className="primary-button w-full justify-center" onClick={() => navigate("service")}>ارسال درخواست</Button></div>)}</div></Page>;
+  return <Page title="متخصصان نزدیک شما" subtitle="همه افراد پس از احراز هویت و بررسی مدارک فعال شده‌اند" back={() => navigate("home")}><div className="mb-5 flex h-48 items-center justify-center rounded-3xl bg-brand-soft text-center text-brand"><div><Icon name="pin" size="lg" /><div className="mt-2 font-black">نقشه محدوده فعالیت</div><div className="mt-1 text-xs">موقعیت دقیق برای حفظ حریم خصوصی نمایش داده نمی‌شود.</div></div></div><div className="grid gap-4 lg:grid-cols-3">{technicians.map((tech, index) => <div className="surface-card" key={tech.id}><div className="flex items-center gap-3"><span className={`avatar avatar-${index + 1}`}><Icon name="user" /></span><div><div className="font-black">{tech.name}</div><div className="text-xs text-muted">{tech.skill}</div></div><span className="mr-auto status-online" /></div><div className="my-5 grid grid-cols-3 gap-2 text-center"><Metric value={tech.rating.toLocaleString("fa-IR")} label="امتیاز" /><Metric value={formatNumber(tech.jobs)} label="پروژه" /><Metric value={`${formatNumber(tech.acceptance)}٪`} label="پذیرش" /></div><div className="flex gap-2"><Button className="secondary-button flex-1 justify-center text-sm" onClick={() => navigate("technician-detail", tech.id)}>پروفایل</Button><Button className="primary-button flex-1 justify-center text-sm" onClick={() => navigate("service-wizard")}>درخواست</Button></div></div>)}</div></Page>;
 }
 
 export function CartScreen({ cart, changeQuantity, navigate }: { cart: number[]; changeQuantity: (id: number, add: boolean) => void; navigate: Navigate }) {
@@ -113,7 +120,15 @@ export function NotificationsScreen({ navigate }: { navigate: Navigate }) {
 }
 
 export function ProfileScreen({ navigate }: { navigate: Navigate }) {
-  return <Page title="حساب کاربری" subtitle="مدیریت اطلاعات و پشتیبانی" back={() => navigate("home")}><div className="grid gap-5 md:grid-cols-3"><div className="surface-card text-center"><span className="avatar avatar-1 mx-auto"><Icon name="user" /></span><div className="mt-3 font-black">سارا محمدی</div><div className="mt-1 text-xs text-muted">۰۹۱۲۱۲۳۴۵۶۷</div></div><div className="surface-card space-y-2 md:col-span-2">{["ویرایش اطلاعات حساب", "آدرس‌های من", "روش‌های پرداخت", "پشتیبانی و تماس با ما"].map((item) => <Button key={item} className="menu-row" onClick={() => navigate("orders")}><span>{item}</span><Icon name="arrow" /></Button>)}</div></div></Page>;
+  const menuItems: [string, () => void][] = [
+    ["درخواست‌های خدمت من", () => navigate("my-requests")],
+    ["سفارش‌های خرید من", () => navigate("orders")],
+    ["ویرایش اطلاعات حساب", () => navigate("orders")],
+    ["آدرس‌های من", () => navigate("orders")],
+    ["روش‌های پرداخت", () => navigate("orders")],
+    ["پشتیبانی و تماس با ما", () => navigate("orders")],
+  ];
+  return <Page title="حساب کاربری" subtitle="مدیریت اطلاعات و پشتیبانی" back={() => navigate("home")}><div className="grid gap-5 md:grid-cols-3"><div className="surface-card text-center"><span className="avatar avatar-1 mx-auto size-16"><Icon name="user" size="lg" /></span><div className="mt-3 font-black">سارا محمدی</div><div className="mt-1 text-xs text-muted">۰۹۱۲۱۲۳۴۵۶۷</div></div><div className="surface-card space-y-1 md:col-span-2">{menuItems.map(([label, onClick]) => <Button key={label} className="menu-row" onClick={onClick}><span>{label}</span><Icon name="arrow" /></Button>)}</div></div></Page>;
 }
 
 export function SearchScreen({ navigate, addToCart }: CommonProps) {
